@@ -76,7 +76,7 @@ First, I’ll use the actions provided by [r-lib](https://github.com/r-lib/actio
 - name: Setup R 
   uses: r-lib/actions/setup-r@master
 ```
-Next, I’ll install the required dependencies: (including ones required to run dldoc())
+Next, I’ll install the required dependencies: (including ones required to run `dldoc()`)
 ```yaml
 - name: Install dependencies
   run: |
@@ -108,3 +108,30 @@ With the updated documentation files locally available in `~/directlabels` on th
     git push
 ```    
 Note that this wouldn’t have been possible without a personal access token. The checkout action I defined on the first step will store the passed account credentials by default so that subsequent git commands can pick them up automatically.
+
+2) Adding directlabels to https://exts.ggplot2.tidyverse.org/gallery/:
+
+This would be fairly straight-forward to accomplish given that I just need to follow the relatively simple instructions as mentioned [here](https://github.com/ggplot2-exts/gallery#adding-a-ggplot2-extension). https://github.com/ggplot2-exts/gallery#adding-a-ggplot2-extension
+I’ve drafted the basic key-value pair code segment to add to their `_config.yml` under the `widgets` section:
+```yml
+name: directlabels
+thumbnail: images/image_name.png
+url: http://tdhock.github.io/directlabels
+jslibs: >
+ghuser: tdhock
+ghrepo: directlabels
+tags: Direct-labelling, Positioning, Plotting, Visualization
+cran: true
+examples: http://tdhock.github.io/directlabels/examples.html
+ghauthor: tdhock
+short: >
+   Easily add direct labels to plots!    
+description: >
+   Simple, uniform framework for adding direct labels to lattice or ggplot2 plots.
+```
+For the description field above, I’m using the project description line from the old svn [repository](https://r-forge.r-project.org/projects/directlabels/). A more elaborate version would be the one used as the inline documentation for the `direct.label` function: “Modern plotting packages like lattice and ggplot2 show automatic legends based on the variable specified for color, but these legends can be confusing if there are too many colors. Direct labels are a useful and clear alternative to a confusing legend in many common plots.” 
+
+The url field can be changed to https://github.com/tdhock/directlabels i.e. the GitHub version (as some contributors did), but I guess that would be preferable only as a final resort if we had no other choices, as specified within the meta requirements. Since we have a detailed and secure (following deployment on gh-pages, as work done from the first point) website, I think it would suit better as the landing page. 
+We can change all these details and finalize the image to display during the course of discussion that will follow prior to sending the pull request. 
+
+On a side note, I noticed (while looking at the most recent [commit](https://github.com/ggplot2-exts/gallery/commit/329b6ff4f449d2ab12f560d06e8af0185a52869a)) that the main contributor manually updates the repo-metrics (stars, forks, issues and watchers) for each repository within the `github_meta.json` file, which is undesired and would show inaccurate results for most of the time. Having recently ventured into GitHub Actions, it instantly occurred to me - why not use them for automating the metrics? (will need to fetch data from the GitHub API within set intervals, just like badges do to show those metrics) As it turns out, there actually is an [issue](https://github.com/ggplot2-exts/gallery/issues/61) on this, but it hasn’t been catered to yet. This is off-topic with respect to our project and my main focus, but I think I will try to implement this after GSoC.
