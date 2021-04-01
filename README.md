@@ -11,12 +11,12 @@ This structure of the gh-pages branch will look like: (/root)
 ```
 tdhock/directlabels/tree/gh-pages
 ├───> content from the current master branch
-├───> files/folders from the svn repository:
-│     ├───> tests/doc folder
-│     ├───> data/prostate.Rdata file
-│     ├───> docs folder
-│     ├───> tex folder
-│     └───> files within the www/ folder (excluding docs/)
+└───> files/folders from the svn repository:
+      ├───> tests/doc folder
+      ├───> data/prostate.Rdata file
+      ├───> docs folder
+      ├───> tex folder
+      └───> files within the www/ folder (excluding docs/)
 ```
 As per the readme of the directlabels GitHub repo, the path passed onto `dldoc()` is `~/R/directlabels/pkg/directlabels`, which must be the source directory Toby sir was working on locally.  
 Considering the above structure of files in the gh-pages branch, the directlabels source directory would be `~/directlabels` when locally accessed by a runner cloning the repository, so I’ll have to change [Line 78](https://github.com/tdhock/directlabels/blob/54ccbb95e0079649d350865f8c063adfc8fbbf0b/R/doc.R#L78) to `setwd(file.path("docs"))` instead of the current `setwd(file.path("..", "..", "www", "docs"))`. 
@@ -111,8 +111,7 @@ Note that this wouldn’t have been possible without a personal access token. Th
 
 2) Adding directlabels to https://exts.ggplot2.tidyverse.org/gallery/:
 
-This would be fairly straight-forward to accomplish given that I just need to follow the relatively simple instructions as mentioned [here](https://github.com/ggplot2-exts/gallery#adding-a-ggplot2-extension). https://github.com/ggplot2-exts/gallery#adding-a-ggplot2-extension
-I’ve drafted the basic key-value pair code segment to add to their `_config.yml` under the `widgets` section:
+This would be fairly straight-forward to accomplish given that I just need to follow the relatively simple instructions as mentioned [here](https://github.com/ggplot2-exts/gallery#adding-a-ggplot2-extension). I’ve drafted the basic key-value pair code segment to add to their `_config.yml` under the `widgets` section:
 ```yml
 name: directlabels
 thumbnail: images/image_name.png
@@ -135,3 +134,60 @@ The url field can be changed to https://github.com/tdhock/directlabels i.e. the 
 We can change all these details and finalize the image to display during the course of discussion that will follow prior to sending the pull request. 
 
 On a side note, I noticed (while looking at the most recent [commit](https://github.com/ggplot2-exts/gallery/commit/329b6ff4f449d2ab12f560d06e8af0185a52869a)) that the main contributor manually updates the repo-metrics (stars, forks, issues and watchers) for each repository within the `github_meta.json` file, which is undesired and would show inaccurate results for most of the time. Having recently ventured into GitHub Actions, it instantly occurred to me - why not use them for automating the metrics? (will need to fetch data from the GitHub API within set intervals, just like badges do to show those metrics) As it turns out, there actually is an [issue](https://github.com/ggplot2-exts/gallery/issues/61) on this, but it hasn’t been catered to yet. This is off-topic with respect to our project and my main focus, but I think I will try to implement this after GSoC.
+
+3) Todo
+
+4) Setup code coverage and then a testing framework, with tests based on the grid grobs which are exposed via `grid.force()`:
+I’ll set up `codecov` via `covr` to generate the code coverage results on every commit we stage and push to directlabels. For the testing framework, I’ll set up `testthat` (if time permits, I’m also thinking to investigate `tinytest` as a possible alternative) and create some simple tests for individual grid graphical objects which become accessible after imposing `grid.force()`. 
+
+It should be easy for me to set up these now since I’ve already used them before in [testComplexity](https://github.com/Anirban166/testComplexity). Also, I’ve specifically written about code coverage, unit testing and their automation in one of my blog posts which focuses on [Software Development in R](https://anirban166.github.io/Software-Development/).
+For example, here’s how I’ll set up code coverage: (with reference to my aforementioned blog post)
+I’ll first run `devtools::use_coverage(pkg = ".", type = c("codecov"))` within my local development scope. For the freshly generated `codecov.yml` file, I’ll add the following lines:
+```yml
+comment: false
+language: R
+sudo: false
+cache: packages
+after_success:
+Rscript -e 'covr::codecov()'
+```
+I’ll add the last two lines on a GitHub Actions workflow1 as well, so as to automate the process of generating the code coverage reports from codecov after every commit.
+For the initial take, Toby sir will need to log into codecov using his GitHub account and for once, give it access to the directlabels repository which will generate a token for us to use (which should be copied).
+Thereafter, we can run `covr::codecov(token = "TokenValue")` with our supplied token value, which will upload the code coverage results (same as measured by `covr::package_coverage()`) to codecov and subsequently provide access to the dashboard and various graphs to view directlabels’ coverage. Optionally, a badge can be added to the readme.
+I’m also thinking of setting up CI to automatically run the tests on say, a pull request. I've recently stumbled upon it, but to use `r-ci` seems convenient, given it's 'ready-to-use' script:
+```yml
+name: CI
+on:
+  push:
+  pull_request:
+env:
+  USE_BSPM: "true"
+  _R_CHECK_FORCE_SUGGESTS_: "false"
+jobs:
+  ci:
+    strategy:
+      matrix:
+        include:
+          - {os: windows-latest}
+          - {os: macOS-latest}
+          - {os: ubuntu-latest}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v2
+      - name: Bootstrap
+        run: |
+          curl -OLs https://eddelbuettel.github.io/r-ci/run.sh
+          chmod 0755 run.sh
+          ./run.sh bootstrap 
+      # Install dependencies including suggested packages:
+      - name: Install Dependencies
+        run: ./run.sh install_all
+      - name: Run Tests
+        run: ./run.sh run_tests 
+```        
+The code coverage automation part can be included within this script itself: (in case I do not resort to make a separate one)
+```yml
+      - name: Coverage
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        run: ./run.sh coverage
+```
