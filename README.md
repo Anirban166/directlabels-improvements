@@ -7,7 +7,7 @@ I’ll serially go through my objectives based on the points laid out [here](htt
 ### File Structure
 The site will be hosted on the 'gh-pages' branch, which is a replication of the current master branch supplemented with some files/folders (in the repository’s root) from the old svn [repository](https://r-forge.r-project.org/projects/directlabels/), which includes:
 
-The doc directory (`directlabels/pkg/directlabels/tests/doc`) along with the datasets required to run the tests contained therein, and the files required to build the documentation (docs folder) and rest of the website.
+The doc directory (`directlabels/pkg/directlabels/tests/doc`) along with the datasets required to run the tests contained therein, and the files required to build the documentation (docs folder) and rest of the website. <br>
 This structure of the gh-pages branch will look like: (/root)
 ```
 tdhock/directlabels/tree/gh-pages
@@ -54,7 +54,7 @@ jobs:
 ```          
 With the changes now available in gh-pages, it’s time to re-compute the docs locally on the runner and then push back the changes to this branch.
 
-The second workflow file will do this by first creating a local source directory of directlabels by cloning the gh-pages repository and by subsequently re-computing the docs/ therein. Finally, it’ll push back the changes via use of Git to our repository.
+The second workflow file will do this by first creating a local source directory of directlabels by cloning the gh-pages repository and by subsequently re-computing the docs/ therein. Finally, it’ll push back the changes (via use of Git) to our repository.
 
 Since this will need to follow after our first workflow, I’ll conditionally run it based on the former workflow’s trigger under a [workflow_run](https://docs.github.com/en/free-pro-team@latest/actions/reference/events-that-trigger-workflows#workflow_run) event:
 ```yaml
@@ -90,7 +90,7 @@ Next, I’ll install the required dependencies: (including ones required to run 
   run: |
   R -e 'install.packages(c("ggplot2", "directlabels", "inlinedocs", "reshape2", "mlmRev", "lars", "latticeExtra"))'
 ```  
-Now I’ll clone directlabels and switch to the gh-pages branch: 
+Then I’ll clone directlabels and switch to the gh-pages branch: 
 ```yaml
 - run: |
     cd ~
@@ -143,9 +143,12 @@ We can change all these details and finalize the image to display during the cou
 
 On a side note, I noticed (while looking at the most recent [commit](https://github.com/ggplot2-exts/gallery/commit/329b6ff4f449d2ab12f560d06e8af0185a52869a)) that the main contributor manually updates the repo-metrics (stars, forks, issues and watchers) for each repository within the `github_meta.json` file, which is undesired and would show inaccurate results for most of the time. Having recently ventured into GitHub Actions, it instantly occurred to me - why not use them for automating the metrics? (will need to fetch data from the GitHub API within set intervals, just like badges do to show those metrics) As it turns out, there actually is an [issue](https://github.com/ggplot2-exts/gallery/issues/61) on this, but it hasn’t been catered to yet. This is off-topic with respect to our project and my main focus, but I think I will try to implement this after GSoC.
 
-3) Todo
+3) Refactor the codebase to make it eligible to exercise `grid.force()` by using the new (Rversion >= 3.0.0) grid hook methods (`makeContent()`, in place of `drawDetails.dlgrob` and `makeContext()`, wherever necessary) and by making changes to the functions affected by this transition:
+
+Todo
 
 4) Setup code coverage and then a testing framework, with tests based on the grid grobs which are exposed via `grid.force()`:
+
 I’ll set up `codecov` via `covr` to generate the code coverage results on every commit we stage and push to directlabels. For the testing framework, I’ll set up `testthat` (if time permits, I’m also thinking to investigate `tinytest` as a possible alternative) and create some simple tests for individual grid graphical objects which become accessible after imposing `grid.force()`. 
 
 It should be easy for me to set up these now since I’ve already used them before in [testComplexity](https://github.com/Anirban166/testComplexity). Also, I’ve specifically written about code coverage, unit testing and their automation in one of my blog posts which focuses on [Software Development in R](https://anirban166.github.io/Software-Development/).
