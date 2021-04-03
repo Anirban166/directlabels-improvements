@@ -210,9 +210,9 @@ function (x, recording)
 ```
 In terms of replacement, everything would remain the same inside the function body except for the last part, where there is a call to `grid.text` (since this is common to all plots). This will get replaced by a call to `textGrob()` in order to generate a `textGrob` object for drawing the label text. I'll of course, replace the existing method name (following S3 nomenclature) `drawDetails.dlgrob` with `makeContent.dlgrobtree`, changing the generic function to the new grid hook `makeContent`, and the object class to `dlgrobtree`, as specified for the `cl` defined within `dlgrob` for our base grob.
 
-Now, in terms of things to add this scope, I'll need to retrieve the other type of grobs, i.e. figuratively the ones creating the boxes/box-shapes. For reference, keep the `textGrob` in mind, which I'll come back to in a moment.
+Now, in terms of things to add this scope, I'll need to retrieve the other type of grobs, i.e. figuratively the ones creating the boxes/box-shapes. For reference, keep the `textGrob` in mind, which I'll come back to in a moment.<sup>1</sup>
 
-Issue with this approach is that we will require both these types of grobs (one for the text and one for the box) together inside `makeContent` to assemble in our `gTree`. For this to happen, I'll need to recieve the grob(s) that will generate the box(es) from the methods which create them, after devising a way to pass them from function to function. 
+Issue with this approach is that we will require both these types of grobs (one for the text and one for the box) together inside `makeContent` to assemble in our `gTree`. For this to happen, I'll need to receive the grob(s) that will generate the box(es) from the methods which create them, after devising a way to pass them from function to function. 
 The way I'll achieve this is by attaching the required grob(s) to the `data.frame` object (which is passed around) via an attribute field. 
 
 For an example, consider the [draw.polygons](https://github.com/tdhock/directlabels/blob/54ccbb95e0079649d350865f8c063adfc8fbbf0b/R/utility.function.R#L473) method with its call to `grid.polygon`: (note that the ellipsis-alike `...` notation I'm using here inside the function body implies the usual code that is in between, left unchanged)
@@ -245,11 +245,19 @@ draw.polygons <- function(d, ...)
   d
 }
 ```
-Since there are multiple grobs generated for each categorical variable here (with `(x, y)` positions being kept in a list, and assigned in a loop altogether to `polygonGrob(x, y, ...)`) within the loop above, I will make the modifications to collect the attributes within the loop itself during GSoC. Likewise, I'll make similar changes to other such positioning methods that currently make use of `grid.*` functions.
+Since there are multiple grobs generated for each categorical variable here (with `(x, y)` positions being kept in a list, and assigned in a loop altogether to `polygonGrob(x, y, ...)`) within the loop above, I will make the modifications to collect the attributes within the loop itself during GSoC. Likewise, I'll make similar changes to other such positioning methods that currently make use of `grid.*` functions:
 
-Note that the reason I'm naming the attribute `shapeGrob` is because there are other variations in the shapes (`draw.rects` gives rectangles for e.g., so if we were to pick `polygonGrob`, it wouldn't make literal sense for that) and we need to pick a generalized term for use in `makeContent`, as the user's choice of method is unknown.
+| Name and Link @`utility.function.R` | Current `grid.*` function | `*Grob` function to replace with |
+|---|---|---|
+| [far.from.others.borders](https://github.com/tdhock/directlabels/blob/54ccbb95e0079649d350865f8c063adfc8fbbf0b/R/utility.function.R#L3) | `grid.points` | `pointsGrob` |
+| [draw.polygons](https://github.com/tdhock/directlabels/blob/54ccbb95e0079649d350865f8c063adfc8fbbf0b/R/utility.function.R#L473) | `grid.polygon` | `polygonGrob` |  
+| [draw.rects](https://github.com/tdhock/directlabels/blob/54ccbb95e0079649d350865f8c063adfc8fbbf0b/R/utility.function.R#L510) | `grid.rect` | `rectGrob` |
+| [project.onto.segments](https://github.com/tdhock/directlabels/blob/54ccbb95e0079649d350865f8c063adfc8fbbf0b/R/utility.function.R#L885) | `grid.segments` | `segmentsGrob` |
+| [empty.grid](https://github.com/tdhock/directlabels/blob/54ccbb95e0079649d350865f8c063adfc8fbbf0b/R/utility.function.R#L1231) | `grid.points`, `grid.segments` | `pointsGrob`, `segmentsGrob` |
 
-Coming back to `makeContent.dlgrobtree`, I can now create the `gTree` with both types of grobs available, which will be assigned as children to it:
+Note that the reason I'm naming the attribute `shapeGrob` is because there are other variations in the shapes (`draw.rects` gives rectangles for e.g., so if we were to pick `polygonGrob`, it wouldn't make literal sense for that) and we need to pick a generalized term for use in `makeContent`.
+
+Coming back to `makeContent.dlgrobtree`, we can now access the above defined `shapeGrob` via the data frame contained in the `dlgrob` list object `x`. Also, we already have our `textGrob` from before<sup>1</sup>, so with both types of grobs available, I can now assign them as children to our `gTree`:
 ```r
 makeContent.dlgrob(x, recording) 
 {
