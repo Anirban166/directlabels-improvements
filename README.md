@@ -245,17 +245,20 @@ draw.polygons <- function(d, ...)
   d
 }
 ```
-Since there are multiple grobs generated for each categorical variable here (with `(x, y)` positions being kept in a list, and assigned in a loop altogether to `polygonGrob(x, y, ...)`) within the loop above, I will make the modifications to collect the attributes within the loop itself during GSoC. Likewise, I'll make similar changes to other such positioning methods that currently make use of `grid.*` functions:
+Note that the reason I'm naming the attribute `shapeGrob` is because there are other variations in the shapes (`draw.rects` gives rectangles for e.g., so if we were to pick `polygonGrob`, it wouldn't make literal sense for that) and we need to pick a generalized term for use in `makeContent`.
 
-| Name and Link @`utility.function.R` | Current `grid.*` function | `*Grob` function to replace with |
+Since there are multiple grobs generated for each categorical variable in the code above (with `(x, y)` positions being kept in a list, and assigned in a loop altogether to `polygonGrob(x, y, ...)`) within the loop above, I will make the modifications to collect the attributes within the loop itself during GSoC. Likewise, I'll make similar changes to other such positioning methods that currently make use of `grid.*` functions:
+
+| Name and Link @utility.function.R | Current grid.* function(s) | *Grob function(s) to replace with |
 |---|---|---|
 | [far.from.others.borders](https://github.com/tdhock/directlabels/blob/54ccbb95e0079649d350865f8c063adfc8fbbf0b/R/utility.function.R#L3) | `grid.points` | `pointsGrob` |
+| [calc.boxes](https://github.com/tdhock/directlabels/blob/54ccbb95e0079649d350865f8c063adfc8fbbf0b/R/utility.function.R#L321) | `grid.rect` | `rectGrob` |
 | [draw.polygons](https://github.com/tdhock/directlabels/blob/54ccbb95e0079649d350865f8c063adfc8fbbf0b/R/utility.function.R#L473) | `grid.polygon` | `polygonGrob` |  
 | [draw.rects](https://github.com/tdhock/directlabels/blob/54ccbb95e0079649d350865f8c063adfc8fbbf0b/R/utility.function.R#L510) | `grid.rect` | `rectGrob` |
 | [project.onto.segments](https://github.com/tdhock/directlabels/blob/54ccbb95e0079649d350865f8c063adfc8fbbf0b/R/utility.function.R#L885) | `grid.segments` | `segmentsGrob` |
 | [empty.grid](https://github.com/tdhock/directlabels/blob/54ccbb95e0079649d350865f8c063adfc8fbbf0b/R/utility.function.R#L1231) | `grid.points`, `grid.segments` | `pointsGrob`, `segmentsGrob` |
 
-Note that the reason I'm naming the attribute `shapeGrob` is because there are other variations in the shapes (`draw.rects` gives rectangles for e.g., so if we were to pick `polygonGrob`, it wouldn't make literal sense for that) and we need to pick a generalized term for use in `makeContent`.
+Apart from `draw.polygons` and `draw.rects`, the rest functions call the `grid.*` methods for debugging purposes only (`calc.boxes` for e.g. creates a rectangle to highlight the viewport area, which is a rectangular region). Following the transition, they wouldn't need to store the generated grobs. 
 
 Coming back to `makeContent.dlgrobtree`, we can now access the above defined `shapeGrob` via the data frame contained in the `dlgrob` list object `x`. Also, we already have our `textGrob` from before<sup>1</sup>, so with both types of grobs available, I can now assign them as children to our `gTree`:
 ```r
@@ -286,7 +289,7 @@ cache: packages
 after_success:
 Rscript -e 'covr::codecov()'
 ```
-I’ll add the last two lines on a GitHub Actions workflow as well, so as to automate the process of generating the code coverage reports from codecov after every commit.
+I’ll add the last two lines on a GitHub Actions workflow<sup>2</sup> as well, so as to automate the process of generating the code coverage reports from codecov after every commit.
 
 For the initial take, Toby sir will need to log into codecov using his GitHub account and for once, give it access to the directlabels repository which will generate a token for us to use (which should be copied).
 Thereafter, we can run `covr::codecov(token = "TokenValue")` with our supplied token value, which will upload the code coverage results (same as measured by `covr::package_coverage()`) to codecov and subsequently provide access to the dashboard and various graphs to view directlabels’ coverage. Optionally, a badge can be added to the readme.
@@ -322,7 +325,7 @@ jobs:
       - name: Run Tests
         run: ./run.sh run_tests 
 ```        
-The code coverage automation part can be included within this script itself: (in case I do not resort to make a separate one)
+<sup>2</sup>The code coverage automation part can be included within this script itself: (in case I do not resort to make a separate one)
 ```yml
       - name: Coverage
         if: ${{ matrix.os == 'ubuntu-latest' }}
