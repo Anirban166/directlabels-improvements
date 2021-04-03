@@ -1,4 +1,4 @@
-## Coding Plan and Methods
+## Coding Plan
 
 I’ll serially go through my objectives based on the points laid out [here](https://github.com/rstats-gsoc/gsoc2021/wiki/directlabels-improvements#coding-project-directlabels-improvements):
 
@@ -145,7 +145,122 @@ On a side note, I noticed (while looking at the most recent [commit](https://git
 
 3) Refactor the codebase to make it eligible to exercise `grid.force()` by using the new (Rversion >= 3.0.0) grid hook methods (`makeContent()`, in place of `drawDetails.dlgrob` and `makeContext()`, wherever necessary) and by making changes to the functions affected by this transition:
 
-Todo
+The codebase and its underlying functions follow the S3 object-oriented system, bearing the `<generic function>.<object class>` naming convention (apparently visible, but one can cross-check via `pryr::otype(object)`) and using `UseMethod` (within parent function `direct.label`) to dispatch the corresponding class-specific method when called by the regular method name. 
+
+This is crucial to keep in mind, since I'll need to cover changes for the class part before moving onto modify the methods.
+The first change will be for the `dlgrob` function (which defines a grid grob class to draw direct labels), wherein instead of creating a new `grob` class with `grob()`, I'll create a `gTree` using `gTree()`:
+```r
+dlgrob <- function(data, method, debug = FALSE, axes2native = identity, ...)
+{  ...
+   gtree(data = data, method = method, debug = debug, axes2native = axes2native, cl = "dlgtree", name = name, ...) 
+}
+```
+No doubt, this sole change would affect the places where `dlgrob()` is called (for e.g. [Line 44](https://github.com/tdhock/directlabels/blob/54ccbb95e0079649d350865f8c063adfc8fbbf0b/R/ggplot2.R#L44) in `ggplot2.R` and [Line 136](https://github.com/tdhock/directlabels/blob/54ccbb95e0079649d350865f8c063adfc8fbbf0b/R/lattice.R#L136) in `lattice.R`), but that's because I'll need to create and add relevant grobs as children of the `gTree` inside a `makeContent` method for this grob class. After all, its those low-level grobs which account for generating the output, and irrespective of what changes we make, we'll need to call those basic building blocks in the end. 
+
+The currently used approach is that of generating this `dlgrob` class from the basic `grob`, and then drawing the desired output via `grid.*` functions. 
+The modified approach to be implemented is to generate our desired output by directly using `*Grob` functions (pre-defined in `grid` just like `grid.*` ones, and same in terms of the output drawn by all means) instead, and in order to collectively assess them by `makeContent()`, I'll put the relevant grobs to be drawn in the `gTree` created within the above grob class through `makeContent.dlgrob`, so as to generate the same output as before when we call `grid.draw`. ([Line 138](https://github.com/tdhock/directlabels/blob/54ccbb95e0079649d350865f8c063adfc8fbbf0b/R/lattice.R#L138) of lattice for e.g.) 
+
+For the changes to be made, consider the code of the former `drawDetails.dlgrob` method:
+```r
+> library(grid)
+> library(directlabels)
+> getS3method("drawDetails", "dlgrob")
+function (x, recording) 
+{
+    cm.data <- x$data
+    cm.data$x <- convertX(unit(cm.data$x, "native"), "cm", valueOnly = TRUE)
+    cm.data$y <- convertY(unit(cm.data$y, "native"), "cm", valueOnly = TRUE)
+    cm.data$groups <- factor(cm.data$groups)
+    levs <- unique(cm.data[, c("groups", "colour")])
+    code <- as.character(levs$colour)
+    names(code) <- as.character(levs$groups)
+    cm.data <- ignore.na(cm.data)
+    if (is.null(cm.data$label)) {
+        cm.data$label <- cm.data$groups
+    }
+    cm.data <- apply.method(x$method, cm.data, debug = x$debug, 
+        axes2native = x$axes2native)
+    if (nrow(cm.data) == 0) 
+        return()
+    colour <- cm.data[["colour"]]
+    cm.data$col <- if (is.null(colour)) {
+        code[as.character(cm.data$groups)]
+    }
+    else {
+        colour
+    }
+    defaults <- list(hjust = 0.5, vjust = 0.5, rot = 0)
+    for (p in names(defaults)) {
+        if (!p %in% names(cm.data)) 
+            cm.data[, p] <- NA
+        cm.data[is.na(cm.data[, p]), p] <- defaults[[p]]
+    }
+    cm.data <- unique(cm.data)
+    gpargs <- c("cex", "alpha", "fontface", "fontfamily", "col")
+    gp <- do.call(gpar, cm.data[names(cm.data) %in% gpargs])
+    if (x$debug) {
+        print(cm.data)
+    }
+    text.name <- paste0("directlabels.text.", x$name)
+    with(cm.data, grid.text(label, x, y, hjust = hjust, vjust = vjust, 
+        rot = rot, default.units = "cm", gp = gp, name = text.name))
+}
+<bytecode: 0x7f8a4b316d30>
+<environment: namespace:directlabels>
+```
+In terms of replacement, everything would remain the same inside the function body except for the last part, where there is a call to `grid.text` (since this is common to all plots). This will get replaced by a call to `textGrob()` in order to generate a `textGrob` object for drawing the label text. I'll of course, replace the existing method name (following S3 nomenclature) `drawDetails.dlgrob` with `makeContent.dlgrob`, changing the generic function to the new grid hook `makeContent`.
+
+Now, in terms of things to add this scope, I'll need to retrieve the other type of grobs, i.e. figuratively the ones creating the boxes/box-shapes. For reference, keep the `textGrob` in mind, which I'll come back to in a moment.
+
+Issue with this approach is that we will require both these types of grobs (one for the text and one for the box) together inside `makeContent` to assemble in our `gTree`. For this to happen, I'll need to recieve the grob(s) that will generate the box(es) from the methods which create them, after devising a way to pass them from function to function. 
+The way I'll achieve this is by attaching the grob(s) required in the `data.frame` object (which is passed around) to an attribute field. 
+
+For an example, consider the [draw.polygons](https://github.com/tdhock/directlabels/blob/54ccbb95e0079649d350865f8c063adfc8fbbf0b/R/utility.function.R#L473) method with its call to `grid.polygon`: (note that the ellipsis-alike `...` notation I'm using here inside the function body implies the usual code that is in between, left unchanged)
+```r
+draw.polygons <- function(d, ...) 
+{  
+   ...
+   for(i in 1:nrow(d))with(d[i,], 
+   {
+   ...
+    grid::grid.polygon(
+      L$x, L$y,
+      default.units = "cm",
+      gp = grid::gpar(col = box.color, fill = colour),
+      name = "directlabels.draw.polygon"
+    )
+  })
+  d$colour <- d$text.color
+  d
+}
+```
+Apart from the switch to `polygonGrob()` instead of the call to `grid.polygon()`, I will create a separate attribute in the `data.frame` object to be returned which holds this grob. The pseudocode depicting the general idea for this would look like:
+```
+draw.polygons <- function(d, ...) 
+{  
+   ...
+   attr(d, 'shapeGrob') <- grid::polygonGrob(...)
+   # or attributes(d)$shapeGrob <- grid::polygonGrob(...)
+  ...
+  d
+}
+```
+Since there are multiple grobs generated for each categorical variable here (with `(x, y)` positions being kept in a list, and assigned in a loop altogether to `polygonGrob(x, y, ...)`) within the loop above, I will make the modifications to collect the attributes within the loop itself during GSoC. Likewise, I'll make similar changes to other such positioning methods that currently make use of `grid.*` functions.
+
+Note that the reason I'm naming the attribute `shapeGrob` is because there are other variations in the shapes (`draw.rects` gives rectangles for e.g., so if we were to pick `polygonGrob`, it wouldn't make literal sense for that) and we need to pick a generalized term for use in `makeContent`, as the user's choice of method is unknown.
+
+Coming back to `makeContent.dlgrob`, I can now create the `gTree` with both types of grobs available, which will be assigned as children to it:
+```r
+makeContent.dlgrob(x, recording) 
+{
+   ...
+   tg <- with(cm.data, textGrob(label, x, y, hjust = hjust, vjust = vjust, 
+        rot = rot, default.units = "cm", gp = gp, name = text.name))
+   sg <- attr(x$data, 'shapeGrob')
+   setChildren(x, gList(tg, sg))
+}
+```
+This modified `gTree` will be returned as the result of this method so that `grid.draw` can draw the generated content. The modifications thus made will allow us to use `grid.force()` now since it affects all grobs that have a `makeContent` method. 
 
 4) Setup code coverage and then a testing framework, with tests based on the grid grobs which are exposed via `grid.force()`:
 
@@ -163,7 +278,7 @@ cache: packages
 after_success:
 Rscript -e 'covr::codecov()'
 ```
-I’ll add the last two lines on a GitHub Actions workflow1 as well, so as to automate the process of generating the code coverage reports from codecov after every commit.
+I’ll add the last two lines on a GitHub Actions workflow as well, so as to automate the process of generating the code coverage reports from codecov after every commit.
 
 For the initial take, Toby sir will need to log into codecov using his GitHub account and for once, give it access to the directlabels repository which will generate a token for us to use (which should be copied).
 Thereafter, we can run `covr::codecov(token = "TokenValue")` with our supplied token value, which will upload the code coverage results (same as measured by `covr::package_coverage()`) to codecov and subsequently provide access to the dashboard and various graphs to view directlabels’ coverage. Optionally, a badge can be added to the readme.
