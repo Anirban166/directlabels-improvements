@@ -152,13 +152,13 @@ The first change will be for the `dlgrob` function (which defines a grid grob cl
 ```r
 dlgrob <- function(data, method, debug = FALSE, axes2native = identity, ...)
 {  ...
-   gtree(data = data, method = method, debug = debug, axes2native = axes2native, cl = "dlgtree", name = name, ...) 
+   gtree(data = data, method = method, debug = debug, axes2native = axes2native, cl = "dlgrobtree", name = name, ...) 
 }
 ```
 No doubt, this sole change would affect the places where `dlgrob()` is called (for e.g. [Line 44](https://github.com/tdhock/directlabels/blob/54ccbb95e0079649d350865f8c063adfc8fbbf0b/R/ggplot2.R#L44) in `ggplot2.R` and [Line 136](https://github.com/tdhock/directlabels/blob/54ccbb95e0079649d350865f8c063adfc8fbbf0b/R/lattice.R#L136) in `lattice.R`), but that's because I'll need to create and add relevant grobs as children of the `gTree` inside a `makeContent` method for this grob class. After all, its those low-level grobs which account for generating the output, and irrespective of what changes we make, we'll need to call those basic building blocks in the end. 
 
 The currently used approach is that of generating this `dlgrob` class from the basic `grob`, and then drawing the desired output via `grid.*` functions. 
-The modified approach to be implemented is to generate our desired output by directly using `*Grob` functions (pre-defined in `grid` just like `grid.*` ones, and same in terms of the output drawn by all means) instead, and in order to collectively assess them by `makeContent()`, I'll put the relevant grobs to be drawn in the `gTree` created within the above grob class through `makeContent.dlgrob`, so as to generate the same output as before when we call `grid.draw`. ([Line 138](https://github.com/tdhock/directlabels/blob/54ccbb95e0079649d350865f8c063adfc8fbbf0b/R/lattice.R#L138) of lattice for e.g.) 
+The modified approach to be implemented is to generate our desired output by directly using `*Grob` functions (pre-defined in `grid` just like `grid.*` ones, and same in terms of the output drawn by all means) instead, and in order to collectively assess them by `makeContent()`, I'll put the relevant grobs to be drawn in the `gTree` created within the above grob class through `makeContent.dlgrobtree`, so as to generate the same output as before when we call `grid.draw`. ([Line 138](https://github.com/tdhock/directlabels/blob/54ccbb95e0079649d350865f8c063adfc8fbbf0b/R/lattice.R#L138) of lattice for e.g.) 
 
 For the changes to be made, consider the code of the former `drawDetails.dlgrob` method:
 ```r
@@ -208,12 +208,12 @@ function (x, recording)
 <bytecode: 0x7f8a4b316d30>
 <environment: namespace:directlabels>
 ```
-In terms of replacement, everything would remain the same inside the function body except for the last part, where there is a call to `grid.text` (since this is common to all plots). This will get replaced by a call to `textGrob()` in order to generate a `textGrob` object for drawing the label text. I'll of course, replace the existing method name (following S3 nomenclature) `drawDetails.dlgrob` with `makeContent.dlgrob`, changing the generic function to the new grid hook `makeContent`.
+In terms of replacement, everything would remain the same inside the function body except for the last part, where there is a call to `grid.text` (since this is common to all plots). This will get replaced by a call to `textGrob()` in order to generate a `textGrob` object for drawing the label text. I'll of course, replace the existing method name (following S3 nomenclature) `drawDetails.dlgrob` with `makeContent.dlgrobtree`, changing the generic function to the new grid hook `makeContent`, and the object class to `dlgrobtree`, as specified for the `cl` defined within `dlgrob` for our base grob.
 
 Now, in terms of things to add this scope, I'll need to retrieve the other type of grobs, i.e. figuratively the ones creating the boxes/box-shapes. For reference, keep the `textGrob` in mind, which I'll come back to in a moment.
 
 Issue with this approach is that we will require both these types of grobs (one for the text and one for the box) together inside `makeContent` to assemble in our `gTree`. For this to happen, I'll need to recieve the grob(s) that will generate the box(es) from the methods which create them, after devising a way to pass them from function to function. 
-The way I'll achieve this is by attaching the grob(s) required in the `data.frame` object (which is passed around) to an attribute field. 
+The way I'll achieve this is by attaching the required grob(s) to the `data.frame` object (which is passed around) via an attribute field. 
 
 For an example, consider the [draw.polygons](https://github.com/tdhock/directlabels/blob/54ccbb95e0079649d350865f8c063adfc8fbbf0b/R/utility.function.R#L473) method with its call to `grid.polygon`: (note that the ellipsis-alike `...` notation I'm using here inside the function body implies the usual code that is in between, left unchanged)
 ```r
@@ -235,7 +235,7 @@ draw.polygons <- function(d, ...)
 }
 ```
 Apart from the switch to `polygonGrob()` instead of the call to `grid.polygon()`, I will create a separate attribute in the `data.frame` object to be returned which holds this grob. The pseudocode depicting the general idea for this would look like:
-```
+```r
 draw.polygons <- function(d, ...) 
 {  
    ...
@@ -249,7 +249,7 @@ Since there are multiple grobs generated for each categorical variable here (wit
 
 Note that the reason I'm naming the attribute `shapeGrob` is because there are other variations in the shapes (`draw.rects` gives rectangles for e.g., so if we were to pick `polygonGrob`, it wouldn't make literal sense for that) and we need to pick a generalized term for use in `makeContent`, as the user's choice of method is unknown.
 
-Coming back to `makeContent.dlgrob`, I can now create the `gTree` with both types of grobs available, which will be assigned as children to it:
+Coming back to `makeContent.dlgrobtree`, I can now create the `gTree` with both types of grobs available, which will be assigned as children to it:
 ```r
 makeContent.dlgrob(x, recording) 
 {
