@@ -273,6 +273,22 @@ makeContent.dlgrob(x, recording)
 ```
 This modified `gTree` will be returned as the result of this method so that `grid.draw` can draw the generated content. The modifications thus made will allow us to use `grid.force()` now since it affects all grobs that have a `makeContent` method. 
 
+Since there isn't a `preDrawDetails()` and a corresponding `postDrawDetails()` method, I'm guessing there isn't a need to introduce a `makeContext` method for drawing context. As mentioned in the [grid R journal article](https://journal.r-project.org/archive/2013/RJ-2013-035/RJ-2013-035.pdf): "Modifying the drawing context at drawing time is not always necessary. When creating a new grob class, it is often simpler just to set up the drawing context at creation time by creating childrenvp for the children of a gTree. It is only when the generation of drawing context has to be delayed until drawing time that a makeContext() method becomes necessary."
+
+In case we do need the method, here's the basic outline with respect to `dlgrobtree`:
+```r
+makeContext.dlgrobtree <- function(x) 
+{
+  dlgrobtreevp <- viewport(...)
+  if (is.null(x$vp)) # x$vp is either a viewport or a viewport path
+    x$vp <- dlgrobtreevp
+  else
+    x$vp <- vpStack(x$vp, dlgrobtreevp)
+  x
+}
+```
+On the other hand, given that the `vpStack()` function combines two viewports into a viewport stack, I could possibly use that in `dlcompare`.
+
 4) Setup code coverage and then a testing framework, with tests based on the grid grobs which are exposed via `grid.force()`:
 
 I’ll set up `codecov` via `covr` to generate the code coverage results on every commit we stage and push to directlabels. For the testing framework, I’ll set up `testthat` (if time permits, I’m also thinking to investigate `tinytest` as a possible alternative) and create some simple tests for individual grid graphical objects which become accessible after imposing `grid.force()`. 
@@ -331,3 +347,9 @@ jobs:
         if: ${{ matrix.os == 'ubuntu-latest' }}
         run: ./run.sh coverage
 ```
+
+Apart from these core objectives, there are a few other points I’ll attend to:
+- Removing old methods that nobody uses any more (contour plots, bad line plot methods).
+- Adding more informative error messages like "Documentation cannot be generated because no doc directory is found.".
+- Investigating the [issue](https://github.com/Anirban166/GSoC21-Tests/issues/8) of missing plots with `dlcompare` usage.
+- Investigating/Debugging any other issues that I encounter along the way.
